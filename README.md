@@ -1,65 +1,110 @@
 # OpenCode Mission Control
 
+![build](https://github.com/AGames21/OpenCode-Mission-Control/actions/workflows/ci.yml/badge.svg)
+![license](https://img.shields.io/github/license/AGames21/OpenCode-Mission-Control)
+![platform](https://img.shields.io/badge/platform-Windows-blue)
+![opencode](https://img.shields.io/badge/opencode-1.18%2B-7aa2ff)
+
 A futuristic real-time desktop dashboard for monitoring OpenCode AI agents and multi-agent workflows.
 
-> **Status:** early development (v0.1.0). The web frontend connects to a local
-> `opencode serve` instance and visualizes **real** sessions, agents,
-> delegation, models, and usage. The Tauri 2 Windows shell + installer are on
-> the roadmap. This is an independent community project, not affiliated with
-> OpenCode.
+![hero](assets/hero.svg)
 
-## What works today
+> **Status:** working web frontend (v0.1.x) on **real** OpenCode telemetry.
+> The Tauri 2 Windows installer is on the roadmap. This is an independent
+> community project, not affiliated with OpenCode.
 
-- **Live agent graph** — every agent reported by your OpenCode server appears
-  as a node with real model, variant, state, and latest activity.
-- **Real delegation edges** — derived from `session.children` parent IDs only.
-  No guessed relationships.
-- **Agent inspector** — role, model, variant, status, parent, children,
-  session, elapsed time, real cost and token usage per agent.
+## One-line launch
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\OpenCodeMissionControl\scripts\start.ps1
+```
+
+Starts `opencode serve` (if needed), starts the dashboard (if needed), and
+opens it in your browser. On load it auto-connects — no clicks required.
+
+![live agent graph](docs/screenshot-graph.png)
+
+*Real session: 26 agents, delegation star around the orchestrator, Oracle
+inspector showing live model, cost and tokens. Nothing simulated.*
+
+## Desktop shortcut
+
+Option A — automatic:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\OpenCodeMissionControl\scripts\shortcut.ps1
+```
+
+This creates **OpenCode Mission Control** on your Desktop. Double-click it any
+time to launch everything.
+
+Option B — manual: right-click Desktop → **New → Shortcut**, paste as the
+location:
+
+```
+powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\OpenCodeMissionControl\scripts\start.ps1"
+```
+
+Name it `OpenCode Mission Control`. Done.
+
+## What it shows (all real)
+
+- **Live agent graph** — every agent from your OpenCode server: real model,
+  variant, state, latest activity. Edges only from verified parent sessions.
+- **Agent inspector** — role, model, variant, parent, children, session,
+  elapsed time, real cost and token usage, recent activity, errors.
 - **Live timeline** — real SSE events with agent/type/error filters.
-- **Setup detection** — probes local endpoints, one click to connect.
-- **Reliability** — auto-reconnect with backoff, per-call degradation, unknown
-  events preserved (never crash, never fake).
+- **Stats** — active agents (live + 5-min recency), sessions, tools, files,
+  errors, uptime.
+- **Reliability** — auto-connect on load, auto-reconnect with backoff, death
+  detection when the server vanishes, graceful degradation everywhere.
 
-## Quick start (development)
+## Manual start (development)
 
 Requirements: Node 20+, [OpenCode](https://opencode.ai) 1.18+.
 
 ```sh
-# 1. Start a local OpenCode server (telemetry stays on this machine)
-opencode serve --port 4096
-
-# 2. Install and run the dashboard
+opencode serve --port 4096      # terminal 1: local telemetry server
 npm install
-npm run dev
-# open http://localhost:5199 → Connect → LIVE
+npm run dev                     # terminal 2: http://localhost:5199
 ```
 
-Other commands: `npm test` (vitest), `npm run typecheck`, `npm run build`.
+Checks: `npm test` · `npm run typecheck` · `npm run build` · `npm run lint`
 
 ## How it connects
 
-Mission Control uses only the official `@opencode-ai/sdk`:
+Only the official `@opencode-ai/sdk` — no scraping, no DB reads:
 
 | Signal | SDK call | Real? |
 |---|---|---|
 | Agent list + variants | `app.agents()` | ✅ |
 | Sessions | `session.list()` | ✅ |
 | Parent/child delegation | `session.children()` | ✅ |
-| Cost + tokens | session `cost` / `tokens` fields | ✅ |
-| Per-agent model | session `model` field | ✅ |
+| Cost + tokens | session `cost` / `tokens` | ✅ |
+| Per-agent model | session `model` | ✅ |
 | Live events | `global.event()` SSE | ✅ |
 | Hidden chain-of-thought | — | ❌ never exposed |
 
-Nothing leaves the machine. No analytics, no accounts.
+Localhost by default. The app warns if you point it at a non-local endpoint.
+No analytics, no accounts, nothing leaves the machine.
 
 ## Roadmap
 
-- Tauri 2 Windows shell (sidecar server, tray, notifications)
-- `OpenCode-Mission-Control-Setup-x64.exe` (NSIS, per-user, no admin)
-- Mini always-on-top mode, in-app updater, GitHub release automation
-- Screenshots + full docs (`ARCHITECTURE.md`, `DEVELOPMENT.md`)
+- [x] Live telemetry + graph + inspector + timeline + setup
+- [x] Auto-connect, reconnect watchdog, shape-validated detection
+- [x] One-line launcher + desktop shortcut
+- [ ] Tauri 2 shell (sidecar server, tray, notifications, updater)
+- [ ] `OpenCode-Mission-Control-Setup-x64.exe` (NSIS, per-user, no admin)
+- [ ] Mini always-on-top mode
+- [ ] GitHub release automation + signed updates
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## Contributing
+
+PRs welcome — see the PR template checklist (real-data rule enforced).
+Bug reports: use the issue form (app version, OpenCode version, setup).
 
 ## License
 
-MIT — see `LICENSE` (to be added before first release).
+MIT — see [LICENSE](LICENSE).

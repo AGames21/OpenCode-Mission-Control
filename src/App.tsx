@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AgentGraph from './components/AgentGraph';
 import Inspector from './components/Inspector';
 import Timeline from './components/Timeline';
 import { SettingsModal, SetupBanner, StatsBar, TopBar } from './components/Panels';
+import { useMission } from './store';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const boot = useMission((s) => s.boot);
+
+  useEffect(() => {
+    void boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="shell">

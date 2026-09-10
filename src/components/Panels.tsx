@@ -77,11 +77,8 @@ export function SetupBanner() {
   const connect = useMission((s) => s.connect);
   const saveSettings = useMission((s) => s.saveSettings);
 
-  useEffect(() => {
-    if (conn.status === 'disconnected') void detectEndpoints();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Detection is driven by store.boot() on app start; the wizard only
+  // re-runs it on explicit Retry.
   if (conn.status === 'live' || conn.status === 'connecting') return null;
   const remote = !isLocalEndpoint(useMission.getState().settings.endpoint);
 

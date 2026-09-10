@@ -43,6 +43,7 @@ interface MissionState {
   connect: (endpoint?: string) => Promise<void>;
   disconnect: () => void;
   detectEndpoints: () => Promise<void>;
+  boot: () => Promise<void>;
   select: (id: string | null) => void;
   setFilter: (f: Partial<MissionState['filter']>) => void;
   saveSettings: (s: Partial<Settings>) => void;
@@ -242,6 +243,17 @@ export const useMission = create<MissionState>((set, get) => {
         if (await probeEndpoint(url)) found.push(url);
       }
       set((st) => ({ detected: found, conn: { ...st.conn, probing: null } }));
+    },
+
+    /** First-load boot: silently connect to the saved endpoint if alive,
+        otherwise fall back to full detection (shows the wizard). */
+    boot: async () => {
+      if (get().conn.status !== 'disconnected') return;
+      if (await probeEndpoint(get().settings.endpoint)) {
+        await get().connect(get().settings.endpoint);
+      } else {
+        await get().detectEndpoints();
+      }
     },
 
     disconnect: () => {
