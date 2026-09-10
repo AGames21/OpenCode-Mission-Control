@@ -3,12 +3,13 @@ import AgentGraph from './components/AgentGraph';
 import Chat from './components/Chat';
 import Inspector from './components/Inspector';
 import Team from './components/Team';
+import Tools from './components/Tools';
 import Timeline from './components/Timeline';
 import { SettingsModal, SetupBanner, StatsBar, TopBar } from './components/Panels';
 import { createClient } from './lib/opencode';
 import { useMission } from './store';
 
-type View = 'graph' | 'chat' | 'team';
+type View = 'graph' | 'chat' | 'team' | 'tools';
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -26,9 +27,9 @@ export default function App() {
     <div className="shell">
       <TopBar onOpenSettings={() => setSettingsOpen(true)} />
       <nav className="viewtabs" aria-label="Views">
-        {(['graph', 'chat', 'team'] as View[]).map((v) => (
+        {(['graph', 'chat', 'team', 'tools'] as View[]).map((v) => (
           <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
-            {v === 'graph' ? '⬢ GRAPH' : v === 'chat' ? '💬 CHAT' : '👥 TEAM'}
+            {v === 'graph' ? '⬢ GRAPH' : v === 'chat' ? '💬 CHAT' : v === 'team' ? '👥 TEAM' : '🧰 TOOLS'}
           </button>
         ))}
       </nav>
@@ -50,6 +51,11 @@ export default function App() {
       {view === 'team' && (
         <main className="main main-chat">
           <Team />
+        </main>
+      )}
+      {view === 'tools' && (
+        <main className="main main-chat">
+          <Tools client={client} />
         </main>
       )}
       <Timeline />

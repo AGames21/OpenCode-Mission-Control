@@ -9,9 +9,29 @@ A futuristic real-time desktop dashboard for monitoring OpenCode AI agents and m
 
 ![hero](assets/hero.svg)
 
-> **Status:** working web frontend (v0.1.x) on **real** OpenCode telemetry.
-> The Tauri 2 Windows installer is on the roadmap. This is an independent
-> community project, not affiliated with OpenCode.
+> **Status:** desktop app in development (Tauri 2 + React). The `web` branch
+> is frozen legacy — all new work happens on `main` as the desktop app.
+> This is an independent community project, not affiliated with OpenCode.
+
+## The desktop app (primary)
+
+Native Windows app: spawns `opencode serve` itself, lives in the tray,
+minimizes instead of quitting, native notifications.
+
+```sh
+npm install
+npm run tauri dev        # desktop window (needs Rust + MSVC Build Tools)
+```
+
+Windows installer (`OpenCode-Mission-Control-Setup-x64.exe`, per-user, no
+admin) is built by GitHub Actions on every `v*` tag — see the
+[latest release](https://github.com/AGames21/OpenCode-Mission-Control/releases).
+
+## One-line launch (no Tauri build needed)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\OpenCodeMissionControl\scripts\start.ps1
+```
 
 ## One-line launch
 
@@ -91,12 +111,14 @@ No analytics, no accounts, nothing leaves the machine.
 ## Roadmap
 
 - [x] Live telemetry + graph + inspector + timeline + setup
+- [x] Chat with any model + agent routing (Codex-style, real prompts)
+- [x] Team roster + MCP tool search/install
 - [x] Auto-connect, reconnect watchdog, shape-validated detection
 - [x] One-line launcher + desktop shortcut
-- [ ] Tauri 2 shell (sidecar server, tray, notifications, updater)
+- [ ] Tauri 2 shell (sidecar server, tray, notifications) — scaffolded, CI-built
 - [ ] `OpenCode-Mission-Control-Setup-x64.exe` (NSIS, per-user, no admin)
 - [ ] Mini always-on-top mode
-- [ ] GitHub release automation + signed updates
+- [ ] Preset switching with config backup (needs desktop file access)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
