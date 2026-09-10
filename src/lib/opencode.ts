@@ -38,13 +38,14 @@ async function safe<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-/** Best-effort snapshot; every section degrades independently. */
-export async function fetchSnapshot(client: OpencodeClient): Promise<Snapshot> {
+/** Best-effort snapshot; every section degrades independently. Null = server unreachable. */
+export async function fetchSnapshot(client: OpencodeClient): Promise<Snapshot | null> {
   const [agentsRes, sessionsRes, configRes] = await Promise.all([
     safe(() => client.app.agents()),
     safe(() => client.session.list()),
     safe(() => client.config.get()),
   ]);
+  if (!agentsRes && !sessionsRes && !configRes) return null;
 
   const agents = (agentsRes as { data?: unknown } | null)?.data;
   const sessions = (sessionsRes as { data?: unknown } | null)?.data;

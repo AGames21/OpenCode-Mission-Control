@@ -54,6 +54,10 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let sseStop: { stop: () => void } | null = null;
 /** Monotonic connection generation: stale async work checks and exits. */
 let generation = 0;
+/** Endpoint of the live connection (for watchdog-triggered reconnects). */
+let currentUrl: string | null = null;
+/** True while a reconnect is already scheduled (avoids stacking). */
+let reconnectPending = false;
 
 function loadSettings(): Settings {
   try {
@@ -76,10 +80,32 @@ function sessionIdOf(v: unknown): string | null {
 }
 
 export const useMission = create<MissionState>((set, get) => {
+  /** Shared reconnect path: SSE errors AND snapshot watchdog converge here. */
+  const scheduleReconnect = (url: string) => {
+    if (reconnectPending) return;
+    reconnectPending = true;
+    set({ conn: { status: 'reconnecting', error: null, probing: null } });
+    if (get().settings.autoReconnect) {
+      reconnectTimer = setTimeout(() => {
+        reconnectPending = false;
+        void get().connect(url);
+      }, 3000);
+    } else {
+      reconnectPending = false;
+      set({ conn: { status: 'error', error: 'Event stream disconnected.', probing: null } });
+    }
+  };
+
   const applySnapshot = async (endpoint: string, myGen: number) => {
     const client = createClient(endpoint);
     const snap = await fetchSnapshot(client);
     if (generation !== myGen) return; // superseded by reconnect/disconnect
+    if (!snap) {
+      // Snapshot layer itself failed: treat as dead server (SSE does not
+      // reliably error on some dead sockets — verified live).
+      if (get().conn.status === 'live' && currentUrl === endpoint) scheduleReconnect(endpoint);
+      return;
+    }
     const records = sortSessionsNewest(
       snap.sessions.map(toSessionRecord).filter((s): s is SessionRecord => s !== null),
     );
@@ -220,6 +246,8 @@ export const useMission = create<MissionState>((set, get) => {
 
     disconnect: () => {
       generation += 1;
+      currentUrl = null;
+      reconnectPending = false;
       cleanup();
       set({ conn: { status: 'disconnected', error: null, probing: null } });
     },
@@ -308,18 +336,15 @@ export const useMission = create<MissionState>((set, get) => {
             });
           },
           onError: () => {
-            set({ conn: { status: 'reconnecting', error: null, probing: null } });
-            if (get().settings.autoReconnect) {
-              reconnectTimer = setTimeout(() => void get().connect(url), 3000);
-            } else {
-              set({ conn: { status: 'error', error: 'Event stream disconnected.', probing: null } });
-            }
+            scheduleReconnect(url);
           },
         },
         signal,
       );
 
       set({ conn: { status: 'live', error: null, probing: null } });
+      currentUrl = url;
+      reconnectPending = false;
       await applySnapshot(url, myGeneration);
       poller = setInterval(() => {
         if (generation === myGeneration) void applySnapshot(url, myGeneration);
