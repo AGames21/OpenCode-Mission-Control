@@ -39,6 +39,10 @@ export interface AgentInfo {
   cost: number | null;
   tokensIn: number | null;
   tokensOut: number | null;
+  /** Last time this agent had any observed session update (ms epoch). */
+  lastSeen: number | null;
+  /** Last live-event timestamp applied (guards snapshot from clobbering SSE). */
+  lastEventTs: number;
 }
 
 export interface TimelineEntry {
@@ -47,6 +51,12 @@ export interface TimelineEntry {
   agent: string;
   kind: string;
   summary: string;
+  /** Tool name when the event reports one (parsed from props, not text). */
+  tool: string | null;
+  /** File path when the event reports one. Null when unknown. */
+  file: string | null;
+  /** True for error-kind events. */
+  isError: boolean;
 }
 
 /** Known-agent role metadata. Unknown names fall back gracefully. */
@@ -79,9 +89,7 @@ export function stateForTool(tool: string | null | undefined): AgentState | null
   if (t.includes('playwright') || t.includes('browser')) return 'testing';
   if (t === 'read' || t.startsWith('read') || t.includes('grep') || t.includes('glob') || t.includes('find')) return 'reading';
   if (t === 'edit' || t === 'write' || t.includes('edit')) return 'editing';
-  if (t === 'bash' || t === 'shell' || t.includes('exec') || t.includes('task_') === false) {
-    if (t === 'bash' || t.includes('shell') || t.includes('exec')) return 'executing';
-  }
+  if (t === 'bash' || t === 'shell' || t.includes('exec')) return 'executing';
   if (t === 'task' || t.includes('subagent') || t.includes('delegate')) return 'thinking';
   if (t.includes('test') || t.includes('playwright')) return 'testing';
   if (t.includes('review') || t === 'critic') return 'reviewing';
@@ -121,6 +129,10 @@ let timelineSeq = 0;
  */
 export function normalizeEvent(raw: unknown): TimelineEntry {
   const ts = Date.now();
+  const blank = (kind: string, summary: string): TimelineEntry => {
+    timelineSeq += 1;
+    return { id: `${ts}-${timelineSeq}`, ts, agent: 'opencode', kind, summary, tool: null, file: null, isError: kind === 'unknown' };
+  };
   try {
     const r = raw as Record<string, unknown>;
     const envelope = (r?.['data'] ?? r) as Record<string, unknown>;
@@ -134,12 +146,22 @@ export function normalizeEvent(raw: unknown): TimelineEntry {
       (typeof props?.['name'] === 'string' && (props['name'] as string)) ||
       (typeof envelope?.['sessionID'] === 'string' ? 'session' : 'opencode');
     const summary = summarizeEvent(type, props);
+    const tool = propStr(props, ['tool']);
+    const file = propStr(props, ['file', 'path', 'filename']);
+    const isError = type.toLowerCase().includes('error') || summary.startsWith('Error:');
     timelineSeq += 1;
-    return { id: `${ts}-${timelineSeq}`, ts, agent, kind: type, summary };
+    return { id: `${ts}-${timelineSeq}`, ts, agent, kind: type, summary, tool, file, isError };
   } catch {
-    timelineSeq += 1;
-    return { id: `${ts}-${timelineSeq}`, ts, agent: 'opencode', kind: 'unknown', summary: 'Unrecognized event payload' };
+    return blank('unknown', 'Unrecognized event payload');
   }
+}
+
+function propStr(props: Record<string, unknown>, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = props?.[k];
+    if (typeof v === 'string' && v) return v;
+  }
+  return null;
 }
 
 function summarizeEvent(type: string, props: Record<string, unknown>): string {
@@ -162,7 +184,10 @@ function summarizeEvent(type: string, props: Record<string, unknown>): string {
     return tool ? `Tool: ${tool}` : 'Message updated';
   }
   if (t.includes('permission')) return `Permission required${pick('tool') ? `: ${pick('tool')}` : ''}`;
-  if (t.includes('file.edited') || t.includes('fileedited')) return `Edited ${pick('file', 'path') ?? 'a file'}`;
+  if (t.includes('file.edited') || t.includes('fileedited')) {
+    const f = pick('file', 'path');
+    return f ? `Edited ${f}` : 'File change reported';
+  }
   if (t.includes('filewatcher')) return 'Workspace files changed';
   if (t.includes('command.executed')) return `Command: ${pick('command') ?? 'executed'}`;
   if (t.includes('todo')) return 'Todo list updated';
@@ -399,7 +424,6 @@ export function buildDelegation(
     if (t >= prev) latest[agent] = s;
   };
 
-  const byId = new Map(sessions.map((s) => [s.id, s]));
   for (const s of sessions) {
     if (s.agent) credit(s.agent, s);
     const kids = childrenByParent[s.id] ?? [];
@@ -410,7 +434,16 @@ export function buildDelegation(
       credit(name, k);
       if (s.agent && name !== s.agent) parents[name] = s.agent;
     }
-    void byId;
   }
   return { parents, childCounts, usage, latest };
+}
+
+/**
+ * Newest-first by last update. session.list order is not contractual,
+ * so sort explicitly instead of assuming it.
+ */
+export function sortSessionsNewest(sessions: SessionRecord[]): SessionRecord[] {
+  return [...sessions].sort(
+    (a, b) => (b.time?.updated ?? b.time?.created ?? 0) - (a.time?.updated ?? a.time?.created ?? 0),
+  );
 }

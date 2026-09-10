@@ -18,7 +18,6 @@ import { useMission } from '../store';
 const STATE_DOT: Record<string, string> = {
   idle: '#5b6478',
   thinking: '#7aa2ff',
-  researching: '#7aa2ff',
   reading: '#6fd3c7',
   editing: '#c9a35c',
   executing: '#e08a5c',

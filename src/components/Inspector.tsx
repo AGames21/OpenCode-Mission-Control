@@ -66,7 +66,7 @@ export default function Inspector() {
           <Field k="Cost" v={agent.cost !== null ? `$${agent.cost.toFixed(4)}` : null} />
           <Field k="Tokens in" v={agent.tokensIn !== null ? agent.tokensIn.toLocaleString() : null} />
           <Field k="Tokens out" v={agent.tokensOut !== null ? agent.tokensOut.toLocaleString() : null} />
-          <p className="muted small">Usage aggregates real per-session cost/tokens reported by the local OpenCode server.</p>
+          <p className="muted small">Usage sums real per-session cost/tokens from the 20 most recent sessions. Older history is not included.</p>
         </div>
       )}
       {tab === 'ACTIVITY' && (

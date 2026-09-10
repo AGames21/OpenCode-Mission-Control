@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMission } from '../store';
+import { isLocalEndpoint } from '../lib/opencode';
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -20,7 +21,11 @@ export function StatsBar() {
     return () => clearInterval(t);
   }, []);
 
-  const active = Object.values(agents).filter((a) => a.state !== 'idle' && a.state !== 'success').length;
+  const active = Object.values(agents).filter((a) => {
+    if (a.state !== 'idle' && a.state !== 'success') return true;
+    // Honest derived activity: a session updated in the last 5 minutes.
+    return a.lastSeen !== null && Date.now() - a.lastSeen < 5 * 60 * 1000;
+  }).length;
   const uptime = stats.startedAt ? Math.floor((Date.now() - stats.startedAt) / 1000) : 0;
   const up = `${Math.floor(uptime / 60)}m ${uptime % 60}s`;
 
@@ -78,9 +83,10 @@ export function SetupBanner() {
   }, []);
 
   if (conn.status === 'live' || conn.status === 'connecting') return null;
+  const remote = !isLocalEndpoint(useMission.getState().settings.endpoint);
 
   return (
-    <div className="setup" role="dialog" aria-label="Connect to OpenCode">
+    <div className="setup" role="region" aria-label="Connect to OpenCode">
       <h2>Connect Mission Control to OpenCode</h2>
       {conn.probing && <p className="muted">Probing {conn.probing}…</p>}
       {conn.error && <p className="err-text">{conn.error}</p>}
@@ -104,6 +110,9 @@ export function SetupBanner() {
               <button onClick={() => void connect()}>Connect anyway</button>
             </div>
             <p className="muted small">Telemetry stays on this machine. Nothing is sent anywhere.</p>
+            {remote && (
+              <p className="err-text small">Note: this endpoint is not local — session data will leave this machine.</p>
+            )}
           </div>
         )
       )}
@@ -115,6 +124,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const settings = useMission((s) => s.settings);
   const saveSettings = useMission((s) => s.saveSettings);
   const connect = useMission((s) => s.connect);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

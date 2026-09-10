@@ -1,0 +1,42 @@
+---
+name: Bug report
+description: Report a problem with Mission Control
+body:
+  - type: input
+    attributes:
+      label: Mission Control version
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: OpenCode version (`opencode --version`)
+  - type: input
+    attributes:
+      label: Windows version
+  - type: dropdown
+    attributes:
+      label: OpenCode setup
+      options: [native Windows, WSL2]
+  - type: textarea
+    attributes:
+      label: What happened
+  - type: textarea
+    attributes:
+      label: Reproduction steps
+  - type: textarea
+    attributes:
+      label: Relevant logs (remove secrets first)
+---
+name: Feature request
+description: Suggest an idea for Mission Control
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+  - type: textarea
+    attributes:
+      label: Proposal
+  - type: dropdown
+    attributes:
+      label: Area
+      options: [agent graph, inspector, timeline, telemetry, setup wizard, installer, other]

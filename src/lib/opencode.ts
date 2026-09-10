@@ -66,6 +66,8 @@ export interface EventHandlers {
 /**
  * Subscribe to the global SSE event stream.
  * The SDK delivers events via callback (verified against 1.18.30 types).
+ * Internal SDK retries are disabled: the store owns reconnection (status UI
+ * + backoff) and a second stream would double-count events.
  */
 export function subscribeEvents(
   client: OpencodeClient,
@@ -76,6 +78,7 @@ export function subscribeEvents(
   // The generated client returns a promise resolving to the SSE stream handle.
   const p = (client.global as unknown as { event: (o: unknown) => Promise<unknown> }).event({
     signal,
+    sseMaxRetryAttempts: 0,
     onSseEvent: (ev: unknown) => {
       if (!stopped) handlers.onEvent(ev);
     },
@@ -98,15 +101,37 @@ export function subscribeEvents(
   };
 }
 
-/** Probe whether an endpoint answers like an OpenCode server. */
+/**
+ * Probe whether an endpoint answers like an OpenCode server.
+ * Validates the response SHAPE (not just HTTP 200): the SDK resolves
+ * non-2xx as {error}, never throws, so any random local web server would
+ * otherwise count as "detected". Times out for real via Promise.race.
+ */
 export async function probeEndpoint(baseUrl: string, timeoutMs = 2500): Promise<boolean> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const client = createClient(baseUrl);
-    const res = await safe(() => client.config.get());
-    return res !== null;
-  } finally {
-    clearTimeout(t);
+    const res = (await Promise.race([
+      safe(() => client.config.get()),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ])) as { data?: unknown } | null;
+    const data = res?.data as Record<string, unknown> | undefined;
+    if (!data || typeof data !== 'object') return false;
+    // Real OpenCode config always carries a model string or its schema id.
+    return (
+      typeof data['model'] === 'string' ||
+      (typeof data['$schema'] === 'string' && (data['$schema'] as string).includes('opencode'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** True for loopback endpoints (telemetry provably stays local). */
+export function isLocalEndpoint(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+  } catch {
+    return false;
   }
 }

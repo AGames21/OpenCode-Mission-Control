@@ -7,6 +7,7 @@ import {
   normalizeEvent,
   pushTimeline,
   roleMeta,
+  sortSessionsNewest,
   stateForTool,
   toSessionRecord,
   type AgentInfo,
@@ -76,7 +77,7 @@ describe('roleMeta', () => {
 });
 
 describe('buildGraph', () => {
-  const base = { role: 'R', model: 'm', variant: '', activity: null, startedAt: null, sessionId: null, lastTool: null, lastFile: null, error: null, cost: null, tokensIn: null, tokensOut: null };
+  const base = { role: 'R', model: 'm', variant: '', activity: null, startedAt: null, sessionId: null, lastTool: null, lastFile: null, error: null, cost: null, tokensIn: null, tokensOut: null, lastSeen: null, lastEventTs: 0 };
   const agents: AgentInfo[] = [
     { ...base, id: 'orchestrator', state: 'thinking', parentId: null, childCount: 2 },
     { ...base, id: 'explorer', state: 'reading', parentId: 'orchestrator', childCount: 0, lastTool: 'grep' },
@@ -178,10 +179,31 @@ describe('session derivation', () => {
     const d = buildDelegation([parent], { p: [kid] });
     expect(d.parents['my-custom-agent']).toBe('orchestrator');
   });
+
+  it('exposes tool/file/isError without text parsing', () => {
+    const e = normalizeEvent({ type: 'message.updated', properties: { tool: 'bash', agent: 'fixer' } });
+    expect(e.tool).toBe('bash');
+    expect(e.file).toBeNull();
+    expect(e.isError).toBe(false);
+    const f = normalizeEvent({ type: 'file.edited', properties: { path: 'src/a.ts' } });
+    expect(f.file).toBe('src/a.ts');
+    const g = normalizeEvent({ type: 'session.error', properties: { message: 'boom' } });
+    expect(g.isError).toBe(true);
+    const h = normalizeEvent({ type: 'file.edited', properties: {} });
+    expect(h.file).toBeNull();
+    expect(h.summary).toBe('File change reported');
+  });
+
+  it('sorts sessions newest-first instead of assuming list order', () => {
+    const a = toSessionRecord({ id: 'a', time: { updated: 100 } })!;
+    const b = toSessionRecord({ id: 'b', time: { updated: 300 } })!;
+    const c = toSessionRecord({ id: 'c' })!;
+    expect(sortSessionsNewest([a, b, c]).map((s) => s.id)).toEqual(['b', 'a', 'c']);
+  });
 });
 
 describe('pushTimeline', () => {
-  const mk = (id: string): TimelineEntry => ({ id, ts: 1, agent: 'a', kind: 'k', summary: 's' });
+  const mk = (id: string): TimelineEntry => ({ id, ts: 1, agent: 'a', kind: 'k', summary: 's', tool: null, file: null, isError: false });
 
   it('dedupes by id and caps length', () => {
     let list: TimelineEntry[] = [];

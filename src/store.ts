@@ -5,6 +5,7 @@ import {
   normalizeEvent,
   pushTimeline,
   roleMeta,
+  sortSessionsNewest,
   toSessionRecord,
   type AgentInfo,
   type SessionRecord,
@@ -51,6 +52,8 @@ let aborter: AbortController | null = null;
 let poller: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let sseStop: { stop: () => void } | null = null;
+/** Monotonic connection generation: stale async work checks and exits. */
+let generation = 0;
 
 function loadSettings(): Settings {
   try {
@@ -73,12 +76,13 @@ function sessionIdOf(v: unknown): string | null {
 }
 
 export const useMission = create<MissionState>((set, get) => {
-  const applySnapshot = async (endpoint: string) => {
+  const applySnapshot = async (endpoint: string, myGen: number) => {
     const client = createClient(endpoint);
     const snap = await fetchSnapshot(client);
-    const records = snap.sessions
-      .map(toSessionRecord)
-      .filter((s): s is SessionRecord => s !== null);
+    if (generation !== myGen) return; // superseded by reconnect/disconnect
+    const records = sortSessionsNewest(
+      snap.sessions.map(toSessionRecord).filter((s): s is SessionRecord => s !== null),
+    );
     // Bound fan-out: children for the 20 most recent sessions only.
     const recent = records.slice(0, 20);
     const kids = await Promise.all(
@@ -96,6 +100,7 @@ export const useMission = create<MissionState>((set, get) => {
       }),
     );
     const childrenByParent: Record<string, SessionRecord[]> = Object.fromEntries(kids);
+    if (generation !== myGen) return; // superseded while fetching
     const delegation = buildDelegation(records, childrenByParent);
     set((st) => {
       const agents: Record<string, AgentInfo> = { ...st.agents };
@@ -120,6 +125,8 @@ export const useMission = create<MissionState>((set, get) => {
           cost: null,
           tokensIn: null,
           tokensOut: null,
+          lastSeen: null,
+          lastEventTs: 0,
         };
         agents[name] = fresh;
         return fresh;
@@ -148,11 +155,15 @@ export const useMission = create<MissionState>((set, get) => {
       for (const [name, s] of Object.entries(delegation.latest)) {
         const prev = ensure(name);
         const sessionModel = s.model ? `${s.model.providerID}/${s.model.id}` : null;
+        const sessionTs = s.time?.updated ?? s.time?.created ?? 0;
+        // Never let a slower snapshot clobber fresher live-event activity.
+        const activity = prev.lastEventTs > sessionTs ? prev.activity : (s.title ?? prev.activity);
         agents[name] = {
           ...prev,
-          activity: s.title ?? prev.activity,
+          activity,
           sessionId: s.id,
           startedAt: s.time?.created ? s.time.created : prev.startedAt,
+          lastSeen: Math.max(prev.lastSeen ?? 0, sessionTs) || null,
           // Prefer the real per-session model over the server default.
           model: sessionModel ?? prev.model,
           variant: s.model?.variant ?? prev.variant,
@@ -208,23 +219,29 @@ export const useMission = create<MissionState>((set, get) => {
     },
 
     disconnect: () => {
+      generation += 1;
       cleanup();
       set({ conn: { status: 'disconnected', error: null, probing: null } });
     },
 
     connect: async (endpoint) => {
       cleanup();
+      generation += 1;
+      const myGeneration = generation;
       const url = endpoint ?? get().settings.endpoint;
       set({ conn: { status: 'connecting', error: null, probing: null } });
       const ok = await probeEndpoint(url);
+      if (generation !== myGeneration) return; // superseded
       if (!ok) {
         const fail = async (attempt: number) => {
+          if (generation !== myGeneration) return;
           if (!get().settings.autoReconnect || attempt > 5) {
             set({ conn: { status: 'error', error: `OpenCode not reachable at ${url}. Start it with: opencode serve --port 4096`, probing: null } });
             return;
           }
           set({ conn: { status: 'reconnecting', error: null, probing: null } });
           reconnectTimer = setTimeout(async () => {
+            if (generation !== myGeneration) return;
             if (await probeEndpoint(url)) await get().connect(url);
             else await fail(attempt + 1);
           }, Math.min(2000 * 2 ** attempt, 15000));
@@ -244,15 +261,15 @@ export const useMission = create<MissionState>((set, get) => {
             const entry = normalizeEvent(raw);
             set((st) => {
               let { agents, stats } = st;
-              // Derive lightweight agent activity from event kinds.
               const k = entry.kind.toLowerCase();
               const props = (raw as { data?: unknown })?.data ?? raw;
               const sid = sessionIdOf(props);
-              const toolMatch = /tool:\s*(\S+)/i.exec(entry.summary);
-              const tool = toolMatch ? toolMatch[1] : null;
-              const isErr = k.includes('error');
-              const fileMatch = /edited\s+(.+)$/i.exec(entry.summary);
-              if (entry.agent && entry.agent !== 'opencode' && entry.agent !== 'session') {
+              const isNamedAgent = entry.agent !== 'opencode' && entry.agent !== 'session';
+              // Count a tool execution once per tool transition: message parts
+              // repeat the same tool many times per single invocation.
+              const prevTool = isNamedAgent ? (agents[entry.agent]?.lastTool ?? null) : null;
+              const toolCounted = entry.tool !== null && entry.tool !== prevTool;
+              if (isNamedAgent) {
                 const prev = agents[entry.agent];
                 const base: AgentInfo = prev ?? {
                   id: entry.agent, role: roleMeta(entry.agent).role, model: 'unavailable',
@@ -260,18 +277,21 @@ export const useMission = create<MissionState>((set, get) => {
                   parentId: null, childCount: 0, sessionId: null,
                   lastTool: null, lastFile: null, error: null,
                   cost: null, tokensIn: null, tokensOut: null,
+                  lastSeen: null, lastEventTs: 0,
                 };
                 agents = {
                   ...agents,
                   [entry.agent]: {
                     ...base,
-                    state: deriveState({ sessionStatus: k, lastTool: tool ?? base.lastTool, hasError: isErr }),
+                    state: deriveState({ sessionStatus: k, lastTool: entry.tool ?? base.lastTool, hasError: entry.isError }),
                     activity: entry.summary,
                     startedAt: base.startedAt ?? entry.ts,
-                    lastTool: tool ?? base.lastTool,
-                    lastFile: fileMatch ? fileMatch[1] : base.lastFile,
+                    lastTool: entry.tool ?? base.lastTool,
+                    lastFile: entry.file ?? base.lastFile,
                     sessionId: sid ?? base.sessionId,
-                    error: isErr ? entry.summary : null,
+                    error: entry.isError ? entry.summary : null,
+                    lastSeen: entry.ts,
+                    lastEventTs: entry.ts,
                   },
                 };
               }
@@ -279,10 +299,10 @@ export const useMission = create<MissionState>((set, get) => {
                 agents,
                 timeline: pushTimeline(st.timeline, entry),
                 stats: {
-                  ...stats,
-                  tools: tool ? stats.tools + 1 : stats.tools,
-                  files: fileMatch ? stats.files + 1 : stats.files,
-                  errors: isErr ? stats.errors + 1 : stats.errors,
+                  ...st.stats,
+                  tools: toolCounted ? stats.tools + 1 : stats.tools,
+                  files: entry.file ? stats.files + 1 : stats.files,
+                  errors: entry.isError ? stats.errors + 1 : stats.errors,
                 },
               };
             });
@@ -300,8 +320,10 @@ export const useMission = create<MissionState>((set, get) => {
       );
 
       set({ conn: { status: 'live', error: null, probing: null } });
-      await applySnapshot(url);
-      poller = setInterval(() => void applySnapshot(url), 10000);
+      await applySnapshot(url, myGeneration);
+      poller = setInterval(() => {
+        if (generation === myGeneration) void applySnapshot(url, myGeneration);
+      }, 10000);
     },
   };
 });
