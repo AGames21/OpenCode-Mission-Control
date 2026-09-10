@@ -30,3 +30,5 @@ serve-*.log
 *.njsproj
 *.sln
 *.sw?
+
+src-tauri/target/
