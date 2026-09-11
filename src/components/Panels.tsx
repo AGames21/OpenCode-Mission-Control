@@ -14,19 +14,19 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 export function StatsBar() {
   const agents = useMission((s) => s.agents);
   const stats = useMission((s) => s.stats);
-  const [, tick] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
   const active = Object.values(agents).filter((a) => {
     if (a.state !== 'idle' && a.state !== 'success') return true;
     // Honest derived activity: a session updated in the last 5 minutes.
-    return a.lastSeen !== null && Date.now() - a.lastSeen < 5 * 60 * 1000;
+    return a.lastSeen !== null && now - a.lastSeen < 5 * 60 * 1000;
   }).length;
-  const uptime = stats.startedAt ? Math.floor((Date.now() - stats.startedAt) / 1000) : 0;
+  const uptime = stats.startedAt ? Math.floor((now - stats.startedAt) / 1000) : 0;
   const up = `${Math.floor(uptime / 60)}m ${uptime % 60}s`;
 
   return (
