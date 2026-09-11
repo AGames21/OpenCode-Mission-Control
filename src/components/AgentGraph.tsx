@@ -1,13 +1,16 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  applyNodeChanges,
   Background,
   Controls,
   Handle,
   MiniMap,
+  Panel,
   Position,
   ReactFlow,
   type Node,
   type Edge,
+  type NodeChange,
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -53,6 +56,28 @@ function AgentNodeView({ data }: NodeProps) {
 
 const MemoAgentNode = memo(AgentNodeView);
 
+const POS_KEY = 'mission-control-positions-v1';
+
+function loadPositions(): Record<string, { x: number; y: number }> {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, { x: number; y: number }>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function savePositions(nodes: Node[]) {
+  try {
+    const map: Record<string, { x: number; y: number }> = {};
+    for (const n of nodes) map[n.id] = { x: n.position.x, y: n.position.y };
+    localStorage.setItem(POS_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function AgentGraph() {
   const agents = useMission((s) => s.agents);
   const selectedId = useMission((s) => s.selectedId);
@@ -62,19 +87,47 @@ export default function AgentGraph() {
   const list = useMemo(() => Object.values(agents), [agents]);
   const graph = useMemo(() => buildGraph(list), [list]);
 
-  const nodes: Node[] = useMemo(
-    () =>
-      graph.nodes.map((n) => {
-        const agent = agents[n.id];
-        return {
-          id: n.id,
-          type: 'agent',
-          position: { x: n.x, y: n.y },
-          data: { agent, selected: selectedId === n.id },
-        };
-      }),
-    [graph, agents, selectedId],
-  );
+  // Draggable nodes: layout seeds positions, user drags override + persist.
+  const [nodes, setNodes] = useState<Node[]>([]);
+  useEffect(() => {
+    const saved = loadPositions();
+    setNodes((prev) => {
+      const kept = new Map(prev.map((n) => [n.id, n]));
+      return graph.nodes
+        .filter((n) => agents[n.id])
+        .map((n) => {
+          const old = kept.get(n.id);
+          const agent = agents[n.id];
+          return {
+            id: n.id,
+            type: 'agent',
+            position: old?.position ?? saved[n.id] ?? { x: n.x, y: n.y },
+            data: { agent, selected: selectedId === n.id },
+          };
+        });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graph, selectedId]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((nds) => {
+      const next = applyNodeChanges(changes, nds);
+      savePositions(next);
+      return next;
+    });
+  }, []);
+
+  const resetLayout = useCallback(() => {
+    try {
+      localStorage.removeItem(POS_KEY);
+    } catch {
+      /* ignore */
+    }
+    setNodes((prev) => {
+      const layout = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+      return prev.map((n) => ({ ...n, position: layout.get(n.id) ?? n.position }));
+    });
+  }, [graph]);
 
   const edges: Edge[] = useMemo(
     () =>
@@ -102,6 +155,7 @@ export default function AgentGraph() {
       nodes={nodes}
       edges={edges}
       nodeTypes={{ agent: MemoAgentNode }}
+      onNodesChange={onNodesChange}
       onNodeClick={(_, n) => select(n.id)}
       onPaneClick={() => select(null)}
       fitView
@@ -115,6 +169,9 @@ export default function AgentGraph() {
       <Background gap={28} size={1.2} className="cmd-bg" />
       <MiniMap pannable zoomable className="cmd-minimap" />
       <Controls position="bottom-left" />
+      <Panel position="top-right">
+        <button onClick={resetLayout} title="Reset to automatic layout">Reset layout</button>
+      </Panel>
     </ReactFlow>
   );
 }

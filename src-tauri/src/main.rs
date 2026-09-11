@@ -86,6 +86,7 @@ fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             ensure_serve();
             if let Err(e) = build_tray(app.handle()) {
