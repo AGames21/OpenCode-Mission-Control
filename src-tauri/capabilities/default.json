@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "notification:default",
+    "process:default",
+    "updater:default",
     "fs:allow-read-file",
     "fs:allow-read-text-file",
     "fs:allow-write-file",

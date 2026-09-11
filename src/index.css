@@ -195,6 +195,14 @@ button.primary { background: var(--accent-soft); border-color: var(--border-stro
   * { animation: none !important; transition: none !important; }
 }
 
+/* ---------- updater ---------- */
+.update-banner {
+  display: flex; align-items: center; gap: 12px;
+  margin: 8px 16px 0; padding: 8px 14px;
+  background: rgba(111, 206, 143, 0.08); border: 1px solid rgba(111, 206, 143, 0.35);
+  border-radius: 10px; font-size: 12.5px;
+}
+
 /* ---------- view tabs ---------- */
 .viewtabs { display: flex; gap: 6px; padding: 8px 16px 0; }
 .viewtabs button.active { background: var(--accent-soft); border-color: var(--border-strong); }

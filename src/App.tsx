@@ -5,6 +5,7 @@ import Inspector from './components/Inspector';
 import Team from './components/Team';
 import Tools from './components/Tools';
 import Timeline from './components/Timeline';
+import UpdateBanner from './components/UpdateBanner';
 import { SettingsModal, SetupBanner, StatsBar, TopBar } from './components/Panels';
 import { createClient } from './lib/opencode';
 import { useMission } from './store';
@@ -33,6 +34,7 @@ export default function App() {
           </button>
         ))}
       </nav>
+      <UpdateBanner />
       <StatsBar />
       {view === 'graph' && (
         <main className="main">
