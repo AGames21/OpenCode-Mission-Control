@@ -4,7 +4,7 @@ use std::net::TcpStream;
 use std::process::Command;
 use std::time::Duration;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 /// Local OpenCode telemetry endpoint (never remote by default).
 const SERVE_PORT: u16 = 4096;
@@ -40,14 +40,14 @@ fn ensure_serve() {
     }
 }
 
-fn show_main(app: &AppHandle) {
+fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
     }
 }
 
-fn build_tray(app: &AppHandle) -> tauri::Result<()> {
+fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let menu = tauri::menu::MenuBuilder::new(app)
         .text("show", "Open Mission Control")
         .text("agents", "Show Active Agents")
