@@ -35,5 +35,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Mission Control ${{ github.ref_name }}'
           releaseBody: 'See CHANGELOG.md for details.'
-          releaseDraft: true
+          releaseDraft: false
+          prerelease: true
           includeUpdaterJson: true
